@@ -111,3 +111,8 @@ ENV/
 .vscode/
 DG_data/*/*
 processed_data/*/*
+
+# products
+scripts/*
+saved_models/*
+saved_results/*
