@@ -16,7 +16,7 @@ For further information about TGB, please consult TGB [website](https://tgb.comp
 
 ## Datasets
 We benchmark the transductive dynamic link prediction task on the dataset provided by TGB for the dynamic link property prediction. 
-These includes *tgbl-wiki*, *tgbl-review*, *tgbl-coin*, *tgbl-comment*, and *tgbl-flight*.
+These includes `tgbl-wiki`, `tgbl-review`, `tgbl-coin`, `tgbl-comment`, and `tgbl-flight`.
 A summary of datasets cab be found on [TGB Learderboard](https://tgb.complexdatalab.com/docs/linkprop/).
 
 
