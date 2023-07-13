@@ -1,10 +1,6 @@
 """
-python train_link_pred_trans_tgb.py --dataset_name wikipedia --model_name DyGFormer --num_runs 1 --num_epochs 1
-python train_link_pred_trans_tgb.py --dataset_name wikipedia --model_name TGN --num_runs 1 --num_epochs 1
-python train_link_pred_trans_tgb.py --dataset_name wikipedia --model_name CAWN --num_runs 1 --num_epochs 1
-python train_link_pred_trans_tgb.py --dataset_name wikipedia --model_name GraphMixer --num_runs 1 --num_epochs 1
-python train_link_pred_trans_tgb.py --dataset_name wikipedia --model_name TCL --num_runs 1 --num_epochs 1
-
+Train a TG model and evaluate it with TGB package
+NOTE:  The task is Transductive Dynamic Link Prediction
 """
 
 import logging
@@ -104,7 +100,7 @@ def main():
 
         logger.info(f"********** Run {run + 1} starts. **********")
 
-        logger.info(f'configuration is {args}')
+        logger.info(f'Configuration is {args}')
 
         # create model
         if args.model_name == 'TGAT':
@@ -313,6 +309,7 @@ def main():
 
         total_train_val_time = timeit.default_timer() - start_run
         logger.info(f'Total train & validation elapsed time (s): {total_train_val_time:.6f}')
+        
         # ========================================
         # ============== Final Test ==============
         # ========================================
