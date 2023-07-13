@@ -40,9 +40,8 @@ For training a model for transductive dynamic link property prediction on a data
 ```
 dataset="tgbl-wiki"
 model="GraphMixer"
-rnd_seed=123
 
-python train_tgb_lpp.py --dataset_name "$dataset" --model_name "$model" --seed "$rnd_seed"
+python train_tgb_lpp.py --dataset_name "$dataset" --model_name "$model"
 ```
 This command will train and evaluate a `GraphMixer` model on `tgbl-wiki` dataset.
 
