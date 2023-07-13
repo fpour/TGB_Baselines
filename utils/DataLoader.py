@@ -181,140 +181,15 @@ def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: fl
     return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data
 
 
-def get_link_pred_data_TRANS_TGB_v1(dataset_name: str, val_ratio: float, test_ratio: float):
-    """
-    generate data for link prediction task (ONLY transductive settings)
-    :param dataset_name: str, dataset name
-    :param val_ratio: float, validation data ratio
-    :param test_ratio: float, test data ratio
-    :return: node_raw_features, edge_raw_features, (np.ndarray),
-            full_data, train_data, val_data, test_data, (Data object)
-    """
-    NODE_FEAT_DIM = EDGE_FEAT_DIM = 172
-    # Load data with PyG
-    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'processed_data')
-    print("DEBUG: Load data from:", path)
-    dataset = JODIEDataset(path, name=dataset_name)
-    data = dataset[0]
-    min_dst_idx, max_dst_idx = int(data.dst.min()), int(data.dst.max())
-    src, dst, t, msg, y = data.src.numpy(), data.dst.numpy(), data.t.numpy(), data.msg.numpy(), data.y.numpy()
-
-    # Load data and train val test split
-    graph_df = pd.DataFrame(zip(src, dst, t, [i for i in range(1, len(data.src + 1))], y), columns=['u', 'i', 'ts', 'idx', 'label'])
-    edge_raw_features = msg
-    node_raw_features = np.zeros((graph_df.shape[0], NODE_FEAT_DIM))
-    
-    # just a pre-processing step...
-    graph_df.u += 1
-    graph_df.i += 1
-
-    assert NODE_FEAT_DIM >= node_raw_features.shape[1], f'Node feature dimension in dataset {dataset_name} is bigger than {NODE_FEAT_DIM}!'
-    assert EDGE_FEAT_DIM >= edge_raw_features.shape[1], f'Edge feature dimension in dataset {dataset_name} is bigger than {EDGE_FEAT_DIM}!'
-    # padding the features of edges and nodes to the same dimension (172 for all the datasets)
-    if node_raw_features.shape[1] < NODE_FEAT_DIM:
-        node_zero_padding = np.zeros((node_raw_features.shape[0], NODE_FEAT_DIM - node_raw_features.shape[1]))
-        node_raw_features = np.concatenate([node_raw_features, node_zero_padding], axis=1)
-    if edge_raw_features.shape[1] < EDGE_FEAT_DIM:
-        edge_zero_padding = np.zeros((edge_raw_features.shape[0], EDGE_FEAT_DIM - edge_raw_features.shape[1]))
-        edge_raw_features = np.concatenate([edge_raw_features, edge_zero_padding], axis=1)
-
-    assert NODE_FEAT_DIM == node_raw_features.shape[1] and EDGE_FEAT_DIM == edge_raw_features.shape[1], "Unaligned feature dimensions after feature padding!"
-
-    # get the timestamp of validate and test set
-    val_time, test_time = list(np.quantile(graph_df.ts, [(1 - val_ratio - test_ratio), (1 - test_ratio)]))
-
-    src_node_ids = graph_df.u.values.astype(np.longlong)
-    dst_node_ids = graph_df.i.values.astype(np.longlong)
-    node_interact_times = graph_df.ts.values.astype(np.float64)
-    edge_ids = graph_df.idx.values.astype(np.longlong)
-    labels = graph_df.label.values
-
-    full_data = Data(src_node_ids=src_node_ids, dst_node_ids=dst_node_ids, node_interact_times=node_interact_times, edge_ids=edge_ids, labels=labels)
-
-    # the setting of seed follows previous works
-    random.seed(2020)
-
-    # union to get node set
-    node_set = set(src_node_ids) | set(dst_node_ids)
-    num_total_unique_node_ids = len(node_set)
-
-    # compute nodes which appear at test time
-    test_node_set = set(src_node_ids[node_interact_times > val_time]).union(set(dst_node_ids[node_interact_times > val_time]))
-    # # sample nodes which we keep as new nodes (to test inductiveness), so then we have to remove all their edges from training
-    # new_test_node_set = set(random.sample(test_node_set, int(inductive_node_ratio * num_total_unique_node_ids)))
-
-    # # mask for each source and destination to denote whether they are new test nodes
-    # new_test_source_mask = graph_df.u.map(lambda x: x in new_test_node_set).values
-    # new_test_destination_mask = graph_df.i.map(lambda x: x in new_test_node_set).values
-
-    # # mask, which is true for edges with both destination and source not being new test nodes (because we want to remove all edges involving any new test node)
-    # observed_edges_mask = np.logical_and(~new_test_source_mask, ~new_test_destination_mask)
-
-    # for train data, we keep edges happening before the validation time which do not involve any new node, used for inductiveness
-    # train_mask = np.logical_and(node_interact_times <= val_time, observed_edges_mask)
-    train_mask = node_interact_times <= val_time
-
-    train_data = Data(src_node_ids=src_node_ids[train_mask], dst_node_ids=dst_node_ids[train_mask],
-                      node_interact_times=node_interact_times[train_mask],
-                      edge_ids=edge_ids[train_mask], labels=labels[train_mask])
-
-    # define the new nodes sets for testing inductiveness of the model
-    train_node_set = set(train_data.src_node_ids).union(train_data.dst_node_ids)
-    # assert len(train_node_set & new_test_node_set) == 0
-    # new nodes that are not in the training set
-    # new_node_set = node_set - train_node_set
-
-    val_mask = np.logical_and(node_interact_times <= test_time, node_interact_times > val_time)
-    test_mask = node_interact_times > test_time
-
-    # # new edges with new nodes in the val and test set (for inductive evaluation)
-    # edge_contains_new_node_mask = np.array([(src_node_id in new_node_set or dst_node_id in new_node_set)
-    #                                         for src_node_id, dst_node_id in zip(src_node_ids, dst_node_ids)])
-    # new_node_val_mask = np.logical_and(val_mask, edge_contains_new_node_mask)
-    # new_node_test_mask = np.logical_and(test_mask, edge_contains_new_node_mask)
-
-    # validation and test data
-    val_data = Data(src_node_ids=src_node_ids[val_mask], dst_node_ids=dst_node_ids[val_mask],
-                    node_interact_times=node_interact_times[val_mask], edge_ids=edge_ids[val_mask], labels=labels[val_mask])
-
-    test_data = Data(src_node_ids=src_node_ids[test_mask], dst_node_ids=dst_node_ids[test_mask],
-                     node_interact_times=node_interact_times[test_mask], edge_ids=edge_ids[test_mask], labels=labels[test_mask])
-
-    # # validation and test with edges that at least has one new node (not in training set)
-    # new_node_val_data = Data(src_node_ids=src_node_ids[new_node_val_mask], dst_node_ids=dst_node_ids[new_node_val_mask],
-    #                          node_interact_times=node_interact_times[new_node_val_mask],
-    #                          edge_ids=edge_ids[new_node_val_mask], labels=labels[new_node_val_mask])
-
-    # new_node_test_data = Data(src_node_ids=src_node_ids[new_node_test_mask], dst_node_ids=dst_node_ids[new_node_test_mask],
-    #                           node_interact_times=node_interact_times[new_node_test_mask],
-    #                           edge_ids=edge_ids[new_node_test_mask], labels=labels[new_node_test_mask])
-
-    print("INFO: The dataset has {} interactions, involving {} different nodes".format(full_data.num_interactions, full_data.num_unique_nodes))
-    print("INFO: The training dataset has {} interactions, involving {} different nodes".format(
-        train_data.num_interactions, train_data.num_unique_nodes))
-    print("INFO: The validation dataset has {} interactions, involving {} different nodes".format(
-        val_data.num_interactions, val_data.num_unique_nodes))
-    print("INFO: The test dataset has {} interactions, involving {} different nodes".format(
-        test_data.num_interactions, test_data.num_unique_nodes))
-    # print("INFO: The new node validation dataset has {} interactions, involving {} different nodes".format(
-    #     new_node_val_data.num_interactions, new_node_val_data.num_unique_nodes))
-    # print("INFO: The new node test dataset has {} interactions, involving {} different nodes".format(
-    #     new_node_test_data.num_interactions, new_node_test_data.num_unique_nodes))
-    # print("INFO: {} nodes were used for the inductive testing, i.e. are never seen during training".format(len(new_test_node_set)))
-
-    # return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data
-    return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data
-
-
 def get_link_pred_data_TRANS_TGB(dataset_name: str):
     """
-    generate data for link prediction task (ONLY transductive settings)
+    generate data for link prediction task (NOTE: transductive dynamic link prediction)
     load the data with the help of TGB and generate required format for DyGLib
     :param dataset_name: str, dataset name
     :return: node_raw_features, edge_raw_features, (np.ndarray),
             full_data, train_data, val_data, test_data, (Data object)
     """
-    NODE_FEAT_DIM = EDGE_FEAT_DIM = 172
+    NODE_FEAT_DIM = EDGE_FEAT_DIM = 172  # a specific setting for consistency among baselines
  
     # data loading
     dataset = PyGLinkPropPredDataset(name=dataset_name, root="datasets")
@@ -327,7 +202,6 @@ def get_link_pred_data_TRANS_TGB(dataset_name: str):
     train_data = data[train_mask]
     val_data = data[val_mask]
     test_data = data[test_mask]
-
 
     # Load data and train val test split
     min_dst_idx, max_dst_idx = int(data.dst.min()), int(data.dst.max())
