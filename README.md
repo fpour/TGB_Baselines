@@ -61,7 +61,7 @@ publicly available.
 
 
 ## Citation
-If this repository is helpful for your research, please consider citing the following reference projects.
+If this repository is helpful for your research, please consider citing TGB.
 
 
 ```{bibtex}
@@ -69,13 +69,6 @@ If this repository is helpful for your research, please consider citing the foll
   title={Temporal Graph Benchmark for Machine Learning on Temporal Graphs},
   author={Huang, Shenyang and Poursafaei, Farimah and Danovitch, Jacob and Fey, Matthias and Hu, Weihua and Rossi, Emanuele and Leskovec, Jure and Bronstein, Michael and Rabusseau, Guillaume and Rabbany, Reihaneh},
   journal={arXiv preprint arXiv:2307.01026},
-  year={2023}
-}
-
-@article{yu2023towards,
-  title={Towards Better Dynamic Graph Learning: New Architecture and Unified Library},
-  author={Yu, Le and Sun, Leilei and Du, Bowen and Lv, Weifeng},
-  journal={arXiv preprint arXiv:2303.13047},
   year={2023}
 }
 ```
