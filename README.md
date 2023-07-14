@@ -21,7 +21,7 @@ A summary of datasets cab be found on [TGB Learderboard](https://tgb.complexdata
 
 
 ## Temporal Graph Learning Models
-The following continuous-time dynamic graph models can be tested as TGB baselines for dynamic link property prediction task:
+The following continuous-time dynamic graph models can be utilized as TGB baselines for dynamic link property prediction task:
 
 [JODIE](https://dl.acm.org/doi/10.1145/3292500.3330895), 
 [DyRep](https://openreview.net/forum?id=HyePrhR5KX), 
@@ -43,7 +43,7 @@ model="GraphMixer"
 
 python train_tgb_lpp.py --dataset_name "$dataset" --model_name "$model"
 ```
-This command will train and evaluate a `GraphMixer` model on `tgbl-wiki` dataset.
+The above command trains and evaluates a `GraphMixer` model on the `tgbl-wiki` dataset.
 
 The exact configuration arguments can be found in `utils/load_configs.py` file.
 
@@ -56,8 +56,7 @@ The required dependencies are specified in the `requirements.txt` file.
 ## Acknowledgments
 We are grateful to the authors of 
 [DyGLib](https://github.com/yule-BUAA/DyGLib) and [TGB](https://github.com/shenyangHuang/TGB/tree/main)
- for publicly sharing their project codes.
-publicly available.
+for publicly sharing their project codes.
 
 
 ## Citation
