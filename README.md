@@ -54,13 +54,11 @@ The required dependencies are specified in the `requirements.txt` file.
 
 
 ## Acknowledgments
-We are grateful to the authors of 
-[DyGLib](https://github.com/yule-BUAA/DyGLib) and [TGB](https://github.com/shenyangHuang/TGB/tree/main)
-for publicly sharing their project codes.
+The code is adapted from [DyGLib](https://github.com/yule-BUAA/DyGLib). Thanks to the DyGLib authors for sharing their code. If this code repo is useful for your research, please consider citing the original authors from [DyGLib](https://arxiv.org/pdf/2303.13047.pdf) paper as well.
 
 
 ## Citation
-If this repository is helpful for your research, please consider citing TGB.
+If this repository is helpful for your research, please consider citing our TGB paper below.  
 
 
 ```{bibtex}
