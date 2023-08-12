@@ -15,7 +15,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
                         choices=['wikipedia', 'reddit', 'mooc', 'lastfm', 'enron', 'SocialEvo', 
                                  'uci', 'Flights', 'CanParl', 'USLegis', 'UNtrade', 'UNvote', 'Contacts',
                                  'amazonreview', 'stablecoin', 'opensky', 'redditcomments',
-                                 'tgbl-wiki'])
+                                 'tgbl-wiki', 'tgbl-review'])
     parser.add_argument('--batch_size', type=int, default=200, help='batch size')
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='name of the model, note that EdgeBank is only applicable for evaluation',
                         choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer'])
