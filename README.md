@@ -1,3 +1,6 @@
+<!-- # TGB -->
+![TGB logo](imgs/logo.png)
+
 # TGB Baselines
 A repository for benchmarking continuous-time dynamic graph models for link property prediction.
 <h4>
