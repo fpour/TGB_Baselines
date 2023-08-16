@@ -116,3 +116,4 @@ processed_data/*/*
 scripts/*
 saved_models/*
 saved_results/*
+arXiv/*

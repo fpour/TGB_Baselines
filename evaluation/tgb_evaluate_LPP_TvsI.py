@@ -14,6 +14,7 @@ from utils.metrics import get_link_prediction_metrics, get_node_classification_m
 from utils.utils import set_random_seed
 from utils.utils import NeighborSampler
 from utils.DataLoader import Data
+from models.nodebank import NodeBank
 
 # additional required imports
 from tgb.linkproppred.evaluate import Evaluator
@@ -91,7 +92,7 @@ def eval_LPP_TGB_TvsI(model_name: str, model: nn.Module, neighbor_sampler: Neigh
     "param k_value: int, the desired `k` for calculation of metrics @ k
     :return:
     """
-    trans_perf_list, induc_perf_list = []
+    trans_perf_list, induc_perf_list = [], []
 
     if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
         # evaluation phase use all the graph information

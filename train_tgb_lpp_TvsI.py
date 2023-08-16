@@ -35,7 +35,7 @@ from utils.load_configs import get_link_prediction_args
 from models.nodebank import NodeBank
 
 from tgb.linkproppred.evaluate import Evaluator
-from evaluation.tgb_evaluate_LPP import eval_LPP_TGB
+from evaluation.tgb_evaluate_LPP_TvsI import eval_LPP_TGB_TvsI
 
 
 def main():
@@ -356,7 +356,8 @@ def main():
                                                                  num_neighbors=args.num_neighbors, time_gap=args.time_gap)
         test_time = timeit.default_timer() - start_test
         logger.info(f'Test elapsed time (s): {test_time:.4f}')
-        logger.info(f'Test: {metric}: {test_metric: .4f}')
+        logger.info(f'Test: {metric} transductive: {test_trans_metric: .4f}')
+        logger.info(f'Test: {metric} inductive: {test_induc_metric: .4f}')
 
         # avoid the overlap of logs
         if run < args.num_runs - 1:
@@ -374,10 +375,10 @@ def main():
                         'used_mem': used_mem_l,
                         'max_used_mem': max(used_mem_l),
                         'val_times': val_times_l,
-                        f'val {metric} transductive': val_perf_trans_list,
-                        f'val {metric} inductive': val_perf_induc_list,
-                        f'test {metric} transductive': transductive_test,
-                        f'test {metric} inductive': inductive_test,
+                        f'val {metric} transductive': val_trans_perf_list,
+                        f'val {metric} inductive': val_induc_perf_list,
+                        f'test {metric} transductive': test_trans_metric,
+                        f'test {metric} inductive': test_induc_metric,
                         'test_time': test_time,
                         'train_val_total_time': np.sum(np.array(train_times_l)) + np.sum(np.array(val_times_l)),
                   }
@@ -391,6 +392,7 @@ def main():
             file.write(result_json)
 
         logger.info(f"run {run} total elapsed time (s): {timeit.default_timer() - start_run:.4f}")
+
 
 if __name__ == "__main__":
 
