@@ -117,3 +117,4 @@ scripts/*
 saved_models/*
 saved_results/*
 arXiv/*
+cc_env.sh
