@@ -90,10 +90,14 @@ tgb_data_num_edges_map = {
     "tgbn-reddit": 27174118
 }
 
-def get_link_prediction_tgb_data(dataset_name: str, time_scale: str=''):
+def get_link_prediction_tgb_data(dataset_name: str, 
+                                 train_time_gran: str='ct', eval_time_gran: str='ct', time_scale: str=None):
     """
     generate tgb data for link prediction task
-    :param dataset_name: str, dataset name
+    :param dataset_name (str): dataset name
+    :train_time_gran (str): training time granularity
+    :eval_time_gran (str): evaluation time granularity
+    
     :return: node_raw_features, edge_raw_features, (np.ndarray),
             full_data, train_data, val_data, test_data, (Data object), eval_neg_edge_sampler, eval_metric_name
     """
@@ -176,7 +180,11 @@ def get_link_prediction_tgb_data(dataset_name: str, time_scale: str=''):
                      node_interact_times=node_interact_times[test_mask], edge_ids=edge_ids[test_mask], labels=labels[test_mask])
     
     if time_scale in ['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']:
-        train_data.node_interact_times = dtdg_ts[train_mask]
+        if train_time_gran == 'dt':
+            train_data.node_interact_times = dtdg_ts[train_mask]
+        if eval_time_gran == 'dt':
+            val_data.node_interact_times = dtdg_ts[val_mask]
+            test_data.node_interact_times = dtdg_ts[test_mask]
 
     print("The dataset has {} interactions, involving {} different nodes".format(full_data.num_interactions, full_data.num_unique_nodes))
     print("The training dataset has {} interactions, involving {} different nodes".format(train_data.num_interactions, train_data.num_unique_nodes))

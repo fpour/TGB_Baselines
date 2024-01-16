@@ -53,8 +53,12 @@ def get_link_prediction_args(is_evaluation: bool = False):
                         help='strategy for the negative edge sampling')
     parser.add_argument('--load_best_configs', action='store_true', default=False, help='whether to load the best configurations')
     parser.add_argument('--seed', type=int, default=2023, help='random seed')
-    parser.add_argument('--time_scale', type=str, default='', help='Time Scale for discretization',
+    parser.add_argument('--time_scale', type=str, default=None, help='Time Scale for discretization',
                         choices=['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly'])
+    parser.add_argument('--train_time_gran', type=str, default='ct', choices=['ct', 'dt'],
+                        help='Training time granularity.')
+    parser.add_argument('--eval_time_gran', type=str, default='ct', choices=['ct', 'dt'],
+                        help='Evaluation time granularity.')
 
     try:
         args = parser.parse_args()

@@ -43,7 +43,10 @@ def main():
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, \
-        eval_neg_edge_sampler, eval_metric_name = get_link_prediction_tgb_data(dataset_name=args.dataset_name, time_scale=args.time_scale)
+        eval_neg_edge_sampler, eval_metric_name = get_link_prediction_tgb_data(dataset_name=args.dataset_name, 
+                                                                               train_time_gran=args.train_time_gran,
+                                                                               eval_time_gran=args.eval_time_gran,
+                                                                               time_scale=args.time_scale)
 
     # initialize training neighbor sampler to retrieve temporal graph
     train_neighbor_sampler = get_neighbor_sampler(data=train_data, sample_neighbor_strategy=args.sample_neighbor_strategy,
@@ -340,6 +343,8 @@ def main():
                 "run": run,
                 "seed": args.seed,
                 "time_scale": args.time_scale,
+                'train_time_gran': args.train_time_gran,
+                'eval_time_gran': args.eval_time_gran,
                 "train_time_list": train_time_list,
                 "val_time_list": val_time_list,
                 "epoch_time_list": epoch_time_list,
@@ -354,7 +359,7 @@ def main():
             }
         result_json = json.dumps(result_json, indent=4)
 
-        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
+        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}_train_{args.train_time_gran}_eval_{args.eval_time_gran}"
         os.makedirs(save_result_folder, exist_ok=True)
         save_result_path = os.path.join(save_result_folder, f"{args.save_model_name}.json")
 
