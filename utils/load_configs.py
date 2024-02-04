@@ -41,10 +41,10 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--max_input_sequence_length', type=int, default=32, help='maximal length of the input sequence of each node')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
-    parser.add_argument('--num_epochs', type=int, default=50, help='number of epochs')  # original value = 100
+    parser.add_argument('--num_epochs', type=int, default=25, help='number of epochs')  # original value = 100, --> TGB:50
     parser.add_argument('--optimizer', type=str, default='Adam', choices=['SGD', 'Adam', 'RMSprop'], help='name of optimizer')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--patience', type=int, default=5, help='patience for early stopping')  # original value = 20
+    parser.add_argument('--patience', type=int, default=10, help='patience for early stopping')  # original value = 20
     parser.add_argument('--val_ratio', type=float, default=0.15, help='ratio of validation set')
     parser.add_argument('--test_ratio', type=float, default=0.15, help='ratio of test set')
     parser.add_argument('--num_runs', type=int, default=5, help='number of runs')

@@ -353,8 +353,9 @@ def main():
                 "avg_epoch_time": np.mean(epoch_time_list),
                 "total_train_val_time": total_train_val_time,
                 f"validation {metric}": val_perf_list,
-                f"max validation {metric}": np.max(val_perf_list),
+                "num_epoch": len(val_perf_list),
                 f"test {metric}": test_metric,
+                f"best validation {metric}": np.max(val_perf_list),
                 "test_time": test_time,   
             }
         result_json = json.dumps(result_json, indent=4)

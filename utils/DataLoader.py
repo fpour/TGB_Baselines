@@ -101,6 +101,30 @@ def get_link_prediction_tgb_data(dataset_name: str,
     :return: node_raw_features, edge_raw_features, (np.ndarray),
             full_data, train_data, val_data, test_data, (Data object), eval_neg_edge_sampler, eval_metric_name
     """
+    # Load data and train val test split
+    dataset = LinkPropPredDataset(name=dataset_name, root="datasets", preprocess=True)
+    
+    train_mask = dataset.train_mask
+    val_mask = dataset.val_mask
+    test_mask = dataset.test_mask
+    
+    eval_metric_name = dataset.eval_metric
+    
+    eval_neg_edge_sampler = dataset.negative_sampler
+    if time_scale is not None:
+        if eval_time_gran == 'dt':
+            print("DEBUG: Loading Validation & Test negative samples from:")
+            print(f"\tDEBUG: Val.: {dataset.root}/{dataset_name}_val_ns_" + time_scale + ".pkl")
+            print(f"\tDEBUG: Test.: {dataset.root}/{dataset_name}_test_ns_" + time_scale + ".pkl")
+            dataset.negative_sampler.load_eval_set(fname=f"{dataset.root}/{dataset_name}_val_ns_" + time_scale + ".pkl", split_mode="val")
+            dataset.negative_sampler.load_eval_set(fname=f"{dataset.root}/{dataset_name}_test_ns_" + time_scale + ".pkl", split_mode="test")
+        else:
+            dataset.load_val_ns()
+            dataset.load_test_ns()
+    else:
+        dataset.load_val_ns()
+        dataset.load_test_ns()
+    
     if time_scale in ['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']:
         print(f"DEBUG: Load DTDG timestamps for all edges; Timestep: {time_scale}")
         relative_path = './dtdg_timestamps/' 
@@ -109,16 +133,23 @@ def get_link_prediction_tgb_data(dataset_name: str,
         dtdg_ts = np.genfromtxt(ts_file, delimiter=',', dtype=int)
         print("DEBUG: DTDG Shape:", dtdg_ts.shape)
     
-    # Load data and train val test split
-    dataset = LinkPropPredDataset(name=dataset_name, root="datasets", preprocess=True)
-    data = dataset.full_data
+    # Whether to train or evaluate with DT or CT
+    if time_scale is not None:  # change the continuous-time timestamps to another time-granularity
+        if train_time_gran == 'dt':
+            dataset.full_data['timestamps'][train_mask] = dtdg_ts[train_mask]
+        if eval_time_gran == 'dt':
+            dataset.full_data['timestamps'][val_mask] = dtdg_ts[val_mask]
+            dataset.full_data['timestamps'][test_mask] = dtdg_ts[test_mask]
 
+    # process the data to the required format
+    data = dataset.full_data
     src_node_ids = data['sources'].astype(np.longlong)
     dst_node_ids = data['destinations'].astype(np.longlong)
     node_interact_times = data['timestamps'].astype(np.float64)
     edge_ids = data['edge_idxs'].astype(np.longlong)
     labels = data['edge_label']
     edge_raw_features = data['edge_feat'].astype(np.float64)
+    
     # deal with edge features whose shape has only one dimension
     if len(edge_raw_features.shape) == 1:
         edge_raw_features = edge_raw_features[:, np.newaxis]
@@ -170,14 +201,30 @@ def get_link_prediction_tgb_data(dataset_name: str,
 
     assert MAX_FEAT_DIM >= node_raw_features.shape[1], f'Node feature dimension in dataset {dataset_name} is bigger than {MAX_FEAT_DIM}!'
     assert MAX_FEAT_DIM >= edge_raw_features.shape[1], f'Edge feature dimension in dataset {dataset_name} is bigger than {MAX_FEAT_DIM}!'
-        
-    full_data = Data(src_node_ids=src_node_ids, dst_node_ids=dst_node_ids, node_interact_times=node_interact_times, edge_ids=edge_ids, labels=labels)
+    
+    # split the data
     train_data = Data(src_node_ids=src_node_ids[train_mask], dst_node_ids=dst_node_ids[train_mask],
                       node_interact_times=node_interact_times[train_mask], edge_ids=edge_ids[train_mask], labels=labels[train_mask])
     val_data = Data(src_node_ids=src_node_ids[val_mask], dst_node_ids=dst_node_ids[val_mask],
                     node_interact_times=node_interact_times[val_mask], edge_ids=edge_ids[val_mask], labels=labels[val_mask])
     test_data = Data(src_node_ids=src_node_ids[test_mask], dst_node_ids=dst_node_ids[test_mask],
                      node_interact_times=node_interact_times[test_mask], edge_ids=edge_ids[test_mask], labels=labels[test_mask])
+    
+    # remove duplicated edges if DT evaluation is desired
+    if time_scale is not None:  
+        if eval_time_gran == 'dt':
+            print("INFO: Removing duplicated edges for `val_data`...")
+            val_data = remove_duplicate_edges(val_data)
+            
+            print("INFO: Removing duplicated edges for `test_data`...")
+            test_data = remove_duplicate_edges(test_data)
+            
+    
+    full_data = Data(src_node_ids=np.concatenate((train_data.src_node_ids, val_data.src_node_ids, test_data.src_node_ids), axis=0), 
+                     dst_node_ids=np.concatenate((train_data.dst_node_ids, val_data.dst_node_ids, test_data.dst_node_ids), axis=0), 
+                     node_interact_times=np.concatenate((train_data.node_interact_times, val_data.node_interact_times, test_data.node_interact_times), axis=0), 
+                     edge_ids=np.concatenate((train_data.edge_ids, val_data.edge_ids, test_data.edge_ids), axis=0), 
+                     labels=np.concatenate((train_data.labels, val_data.labels, test_data.labels), axis=0))
     
     if time_scale in ['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']:
         if train_time_gran == 'dt':
@@ -194,6 +241,24 @@ def get_link_prediction_tgb_data(dataset_name: str,
     return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, eval_neg_edge_sampler, eval_metric_name
 
 
+def remove_duplicate_edges(data_split: dict):
+    """
+    remove the duplicated edges
+    """
+    src = data_split.src_node_ids
+    dst = data_split.dst_node_ids
+    ts = data_split.node_interact_times
+    e_idx = data_split.edge_ids
+    label = data_split.labels
+    
+    query = np.stack([src, dst, ts], axis=0)
+    uniq, idx = np.unique(query, axis=1, return_index=True)
+    print(f"INFO: original number of edges: {query.shape[1]}, number of duplicated edges: {uniq.shape[1]}")
+    
+    uniq_data_split = Data(src_node_ids=src[idx], dst_node_ids=dst[idx], 
+                           node_interact_times=ts[idx], edge_ids=e_idx[idx], labels=label[idx])
+    return uniq_data_split
+    
 
 def get_link_pred_data_TRANS_TGB(dataset_name: str):
     """
