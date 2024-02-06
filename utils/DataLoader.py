@@ -125,21 +125,22 @@ def get_link_prediction_tgb_data(dataset_name: str,
         dataset.load_val_ns()
         dataset.load_test_ns()
     
-    if time_scale in ['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']:
+    if time_scale is not None:
         print(f"DEBUG: Load DTDG timestamps for all edges; Timestep: {time_scale}")
         relative_path = './dtdg_timestamps/' 
         time_scale = time_scale 
         ts_file = relative_path + f"{dataset_name}_ts_" + time_scale + ".csv"
         dtdg_ts = np.genfromtxt(ts_file, delimiter=',', dtype=int)
         print("DEBUG: DTDG Shape:", dtdg_ts.shape)
-    
-    # Whether to train or evaluate with DT or CT
-    if time_scale is not None:  # change the continuous-time timestamps to another time-granularity
+        
+        # Whether to train or evaluate with DT or CT
+        print(f"INFO: Over-writting timestamps...")
         if train_time_gran == 'dt':
             dataset.full_data['timestamps'][train_mask] = dtdg_ts[train_mask]
         if eval_time_gran == 'dt':
             dataset.full_data['timestamps'][val_mask] = dtdg_ts[val_mask]
             dataset.full_data['timestamps'][test_mask] = dtdg_ts[test_mask]
+        
 
     # process the data to the required format
     data = dataset.full_data
@@ -170,15 +171,6 @@ def get_link_prediction_tgb_data(dataset_name: str,
         print(f"Manually minus the edge indices by 1 on {dataset_name}")
         edge_ids = edge_ids - 1
     assert edge_ids.min() == 0, "After correction, edge index should start from 0!"
-
-    train_mask = dataset.train_mask
-    val_mask = dataset.val_mask
-    test_mask = dataset.test_mask
-    
-    eval_neg_edge_sampler = dataset.negative_sampler
-    dataset.load_val_ns()
-    dataset.load_test_ns()
-    eval_metric_name = dataset.eval_metric
 
     # note that in our data preprocess pipeline, we add an extra node and edge with index 0 as the padded node/edge for convenience of model computation,
     # therefore, for TGB, we also manually add the extra node and edge with index 0
@@ -219,24 +211,16 @@ def get_link_prediction_tgb_data(dataset_name: str,
             print("INFO: Removing duplicated edges for `test_data`...")
             test_data = remove_duplicate_edges(test_data)
             
-    
     full_data = Data(src_node_ids=np.concatenate((train_data.src_node_ids, val_data.src_node_ids, test_data.src_node_ids), axis=0), 
                      dst_node_ids=np.concatenate((train_data.dst_node_ids, val_data.dst_node_ids, test_data.dst_node_ids), axis=0), 
                      node_interact_times=np.concatenate((train_data.node_interact_times, val_data.node_interact_times, test_data.node_interact_times), axis=0), 
                      edge_ids=np.concatenate((train_data.edge_ids, val_data.edge_ids, test_data.edge_ids), axis=0), 
                      labels=np.concatenate((train_data.labels, val_data.labels, test_data.labels), axis=0))
-    
-    if time_scale in ['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']:
-        if train_time_gran == 'dt':
-            train_data.node_interact_times = dtdg_ts[train_mask]
-        if eval_time_gran == 'dt':
-            val_data.node_interact_times = dtdg_ts[val_mask]
-            test_data.node_interact_times = dtdg_ts[test_mask]
 
-    print("The dataset has {} interactions, involving {} different nodes".format(full_data.num_interactions, full_data.num_unique_nodes))
-    print("The training dataset has {} interactions, involving {} different nodes".format(train_data.num_interactions, train_data.num_unique_nodes))
-    print("The validation dataset has {} interactions, involving {} different nodes".format(val_data.num_interactions, val_data.num_unique_nodes))
-    print("The test dataset has {} interactions, involving {} different nodes".format(test_data.num_interactions, test_data.num_unique_nodes))
+    print("INFO: The dataset has {} interactions, involving {} different nodes".format(full_data.num_interactions, full_data.num_unique_nodes))
+    print("INFO: The training dataset has {} interactions, involving {} different nodes".format(train_data.num_interactions, train_data.num_unique_nodes))
+    print("INFO: The validation dataset has {} interactions, involving {} different nodes".format(val_data.num_interactions, val_data.num_unique_nodes))
+    print("INFO: The test dataset has {} interactions, involving {} different nodes".format(test_data.num_interactions, test_data.num_unique_nodes))
 
     return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, eval_neg_edge_sampler, eval_metric_name
 
@@ -253,7 +237,7 @@ def remove_duplicate_edges(data_split: dict):
     
     query = np.stack([src, dst, ts], axis=0)
     uniq, idx = np.unique(query, axis=1, return_index=True)
-    print(f"INFO: original number of edges: {query.shape[1]}, number of duplicated edges: {uniq.shape[1]}")
+    print(f"\tINFO: original number of edges: {query.shape[1]}, number of duplicated edges: {uniq.shape[1]}")
     
     uniq_data_split = Data(src_node_ids=src[idx], dst_node_ids=dst[idx], 
                            node_interact_times=ts[idx], edge_ids=e_idx[idx], labels=label[idx])
