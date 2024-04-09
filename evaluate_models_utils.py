@@ -12,12 +12,12 @@ import json
 from models.EdgeBank import edge_bank_link_prediction
 from utils.metrics import get_link_prediction_metrics, get_node_classification_metrics
 from utils.utils import set_random_seed
-from utils.utils import NegativeEdgeSampler, NeighborSampler
+from utils.utils import NegativeEdgeSampler_local, NeighborSampler
 from utils.DataLoader import Data
 
 
 def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_sampler: NeighborSampler, evaluate_idx_data_loader: DataLoader,
-                                   evaluate_neg_edge_sampler: NegativeEdgeSampler, evaluate_data: Data, loss_func: nn.Module,
+                                   evaluate_neg_edge_sampler: NegativeEdgeSampler_local, evaluate_data: Data, loss_func: nn.Module,
                                    num_neighbors: int = 20, time_gap: int = 2000):
     """
     evaluate models on the link prediction task
@@ -241,7 +241,7 @@ def evaluate_model_node_classification(model_name: str, model: nn.Module, neighb
 
 
 def evaluate_edge_bank_link_prediction(args: argparse.Namespace, train_data: Data, val_data: Data, test_idx_data_loader: DataLoader,
-                                       test_neg_edge_sampler: NegativeEdgeSampler, test_data: Data):
+                                       test_neg_edge_sampler: NegativeEdgeSampler_local, test_data: Data):
     """
     evaluate the EdgeBank model for link prediction
     :param args: argparse.Namespace, configuration
