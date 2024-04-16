@@ -303,6 +303,13 @@ def main():
                 negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings,
                                                   input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
+                # print("DEBUG: positive_probabilities:",
+                #       positive_probabilities)
+                # print("DEBUG: negative_probabilities:",
+                #       negative_probabilities)
+                # positive_probabilities = positive_probabilities.reshape(-1)
+                # negative_probabilities = negative_probabilities.reshape(-1)
+
                 predicts = torch.cat(
                     [positive_probabilities, negative_probabilities], dim=0)
                 labels = torch.cat([torch.ones_like(

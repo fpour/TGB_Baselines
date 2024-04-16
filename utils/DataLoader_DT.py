@@ -45,7 +45,8 @@ def get_lpp_data_DT(dataset_name: str, time_scale: str = None,
                                                       )
 
     # TODO: Actual edge features should be loaded!
-    edge_raw_features = np.zeros((src_node_ids.shape[0], 1))
+    # edge_raw_features = np.zeros((src_node_ids.shape[0], 1))
+    edge_raw_features = np.random.randn(src_node_ids.shape[0], 1)
     if len(edge_raw_features.shape) == 1:
         edge_raw_features = edge_raw_features[:, np.newaxis]
 
@@ -73,7 +74,8 @@ def get_lpp_data_DT(dataset_name: str, time_scale: str = None,
     # Process to format used by NAT/DyGLib
     MAX_FEAT_DIM = 172
     if 'node_feat' not in full_data.keys():
-        node_raw_features = np.zeros((num_nodes + 1, 1))
+        # node_raw_features = np.zeros((num_nodes + 1, 1))
+        node_raw_features = np.random.randn(num_nodes + 1, 1)
     else:
         node_raw_features = full_data['node_feat'].astype(np.float64)
         # deal with node features whose shape has only one dimension

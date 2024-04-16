@@ -126,8 +126,18 @@ def eval_LPP_DT(model_name: str, model: nn.Module, device, neighbor_sampler: Nei
                                                   input_2=batch_pos_dst_node_embeddings).squeeze(dim=-1).sigmoid()
                 negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings,
                                                   input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
+
                 pos_prob_list.append(positive_probabilities.cpu().numpy())
                 neg_prob_list.append(negative_probabilities.cpu().numpy())
+
+                # print("DEBUG: positive_probabilities.shape:",
+                #       positive_probabilities.cpu().numpy().shape)
+                # print("DEBUG: negative_probabilities.shape:",
+                #       negative_probabilities.cpu().numpy().shape)
+                # print("DEBUG: negative_probabilities:",
+                #       negative_probabilities.cpu().numpy())
+                # print("DEBUG: positive_probabilities:",
+                #       positive_probabilities.cpu().numpy())
 
             positive_probabilities = np.array([
                 item for sublist in pos_prob_list for item in sublist])
