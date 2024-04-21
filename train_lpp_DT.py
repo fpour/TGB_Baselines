@@ -59,12 +59,13 @@ def main():
     # initialize negative samplers, set seeds for validation and testing so negatives are the same across different runs
     train_start_index = snapshot_indices[start_times['train']][0]
     train_end_index = snapshot_indices[end_times['train']][1] + 1
+
     train_src_node_ids = temporal_data.sources[train_start_index:train_end_index].clone(
-    ).numpy()
+    ).numpy().astype(np.longlong)
     train_dst_node_ids = temporal_data.destinations[train_start_index:train_end_index].clone(
-    ).numpy()
+    ).numpy().astype(np.longlong)
     train_node_interact_times = temporal_data.timestamps[train_start_index:train_end_index].clone(
-    ).numpy()
+    ).numpy().astype(np.float64)
 
     train_neg_edge_sampler = NegativeEdgeSampler_local(
         src_node_ids=train_src_node_ids, dst_node_ids=train_dst_node_ids)
@@ -180,7 +181,8 @@ def main():
                                        save_model_name=args.save_model_name, logger=logger, model_name=args.model_name)
 
         loss_func = nn.BCELoss()  # sigmoid should be applied explicitly
-        # loss_func = nn.BCEWithLogitsLoss()  # since the link_predictor does not have a `sigmoid`
+        # since the link_predictor does not have a `sigmoid`
+        # loss_func = nn.BCEWithLogitsLoss()
 
         # ================================================
         # ============== train & validation ==============
@@ -209,13 +211,13 @@ def main():
                 idx_end = snapshot_indices[snap_idx][1]
 
                 src_node_ids = temporal_data.sources[idx_start:idx_end].clone(
-                ).numpy()
+                ).numpy().astype(np.longlong)
                 dst_node_ids = temporal_data.destinations[idx_start:idx_end].clone(
-                ).numpy()
+                ).numpy().astype(np.longlong)
                 node_interact_times = temporal_data.timestamps[idx_start:idx_end].clone(
-                ).numpy()
-                edge_ids = temporal_data.edge_ids[idx_start:idx_end].clone(
-                ).numpy
+                ).numpy().astype(np.float64)
+                edge_ids = np.array(
+                    temporal_data.edge_ids[idx_start:idx_end].clone().numpy()).astype(np.longlong)
 
                 _, neg_dst_node_ids = train_neg_edge_sampler.sample(
                     size=len(src_node_ids))
@@ -302,13 +304,6 @@ def main():
                                                   input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
                 negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings,
                                                   input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
-
-                # print("DEBUG: positive_probabilities:",
-                #       positive_probabilities)
-                # print("DEBUG: negative_probabilities:",
-                #       negative_probabilities)
-                # positive_probabilities = positive_probabilities.reshape(-1)
-                # negative_probabilities = negative_probabilities.reshape(-1)
 
                 predicts = torch.cat(
                     [positive_probabilities, negative_probabilities], dim=0)

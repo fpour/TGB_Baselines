@@ -85,13 +85,13 @@ def eval_LPP_DT(model_name: str, model: nn.Module, device, neighbor_sampler: Nei
 
             # temporal_data is Tensor, the model works best with np.ndarray
             src_node_ids = temporal_data.sources[idx_start:idx_end].clone(
-            ).numpy()
+            ).numpy().astype(np.longlong)
             dst_node_ids = temporal_data.destinations[idx_start:idx_end].clone(
-            ).numpy()
+            ).numpy().astype(np.longlong)
             node_interact_times = temporal_data.timestamps[idx_start:idx_end].clone(
-            ).numpy()
+            ).numpy().astype(np.float64)
             edge_ids = temporal_data.edge_ids[idx_start:idx_end].clone(
-            ).numpy()
+            ).numpy().astype(np.longlong)
 
             neg_batch_list = negative_sampler.query_batch(src_node_ids, dst_node_ids, node_interact_times,
                                                           split_mode=split_mode)
@@ -129,15 +129,6 @@ def eval_LPP_DT(model_name: str, model: nn.Module, device, neighbor_sampler: Nei
 
                 pos_prob_list.append(positive_probabilities.cpu().numpy())
                 neg_prob_list.append(negative_probabilities.cpu().numpy())
-
-                # print("DEBUG: positive_probabilities.shape:",
-                #       positive_probabilities.cpu().numpy().shape)
-                # print("DEBUG: negative_probabilities.shape:",
-                #       negative_probabilities.cpu().numpy().shape)
-                # print("DEBUG: negative_probabilities:",
-                #       negative_probabilities.cpu().numpy())
-                # print("DEBUG: positive_probabilities:",
-                #       positive_probabilities.cpu().numpy())
 
             positive_probabilities = np.array([
                 item for sublist in pos_prob_list for item in sublist])

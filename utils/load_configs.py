@@ -22,7 +22,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='name of the model, note that EdgeBank is only applicable for evaluation',
                         choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer'])
     parser.add_argument('--gpu', type=int, default=0, help='ID of gpu to use')
-    parser.add_argument('--num_neighbors', type=int, default=20,
+    parser.add_argument('--num_neighbors', type=int, default=10,  # default=20
                         help='number of neighbors to sample for each node')
     parser.add_argument('--sample_neighbor_strategy', default='recent', choices=[
                         'uniform', 'recent', 'time_interval_aware'], help='how to sample historical neighbors')
@@ -79,7 +79,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
                         default=False, help='whether to load the best configurations')
     parser.add_argument('--seed', type=int, default=2023, help='random seed')
     parser.add_argument('--time_scale', type=str, default=None, help='Time Scale for discretization',
-                        choices=['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly'])
+                        choices=['minutely', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'biyearly'])
     parser.add_argument('--train_time_gran', type=str, default='ct', choices=['ct', 'dt'],
                         help='Training time granularity.')
     parser.add_argument('--eval_time_gran', type=str, default='ct', choices=['ct', 'dt'],
