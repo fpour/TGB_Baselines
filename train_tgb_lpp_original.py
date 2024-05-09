@@ -26,16 +26,16 @@ from models.GraphMixer import GraphMixer
 from models.DyGFormer import DyGFormer
 from models.modules import MergeLayer
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes, create_optimizer
-from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
-from evaluate_models_utils import evaluate_model_link_prediction
+from utils.utils import get_neighbor_sampler, NegativeEdgeSampler_local
 from utils.metrics import get_link_prediction_metrics
-from utils.DataLoader import get_idx_data_loader, get_link_prediction_data, get_link_pred_data_TRANS_TGB
+from utils.DataLoader_original import get_idx_data_loader, get_link_prediction_tgb_data
 from utils.EarlyStopping import EarlyStopping
 from utils.load_configs import get_link_prediction_args
-from models.nodebank import NodeBank
 
 from tgb.linkproppred.evaluate import Evaluator
-from evaluation.tgb_evaluate_LPP_TvsI import eval_LPP_TGB_TvsI
+from evaluation.tgb_evaluate_LPP import eval_LPP_TGB
+
+K_VALUE = 10
 
 
 def main():
@@ -44,12 +44,9 @@ def main():
     args = get_link_prediction_args(is_evaluation=False)
 
     # get data for training, validation and testing
-    node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, dataset = \
-        get_link_pred_data_TRANS_TGB(dataset_name=args.dataset_name)
-        
-    # initialize nodebank
-    nodebank = NodeBank(train_data.src_node_ids, train_data.dst_node_ids)
-    print("INFO: Tracking transductive and inductive mrr")
+    node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, \
+        negative_sampler, metric = get_link_prediction_tgb_data(
+            dataset_name=args.dataset_name)
 
     # initialize training neighbor sampler to retrieve temporal graph
     train_neighbor_sampler = get_neighbor_sampler(data=train_data, sample_neighbor_strategy=args.sample_neighbor_strategy,
@@ -60,22 +57,19 @@ def main():
                                                  time_scaling_factor=args.time_scaling_factor, seed=1)
 
     # initialize negative samplers, set seeds for validation and testing so negatives are the same across different runs
-    train_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=train_data.src_node_ids, dst_node_ids=train_data.dst_node_ids)
+    train_neg_edge_sampler = NegativeEdgeSampler_local(
+        src_node_ids=train_data.src_node_ids, dst_node_ids=train_data.dst_node_ids)
 
     # get data loaders
-    train_idx_data_loader = get_idx_data_loader(indices_list=list(range(len(train_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
-    val_idx_data_loader = get_idx_data_loader(indices_list=list(range(len(val_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
-    test_idx_data_loader = get_idx_data_loader(indices_list=list(range(len(test_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
-
-    val_metric_all_runs, test_metric_all_runs = [], []
+    train_idx_data_loader = get_idx_data_loader(indices_list=list(
+        range(len(train_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
+    val_idx_data_loader = get_idx_data_loader(indices_list=list(
+        range(len(val_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
+    test_idx_data_loader = get_idx_data_loader(indices_list=list(
+        range(len(test_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
 
     # Evaluatign with an evaluator of TGB
-    metric = dataset.eval_metric
     evaluator = Evaluator(name=args.dataset_name)
-    negative_sampler = dataset.negative_sampler
-
-    # load the validation negative samples
-    dataset.load_val_ns()
 
     for run in range(args.num_runs):
         start_run = timeit.default_timer()
@@ -87,16 +81,20 @@ def main():
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
-        os.makedirs(f"./logs/{args.model_name}/{args.dataset_name}/{args.save_model_name}/", exist_ok=True)
+        os.makedirs(
+            f"./logs/{args.model_name}/{args.dataset_name}/{args.save_model_name}/", exist_ok=True)
         # create file handler that logs debug and higher level messages
-        log_start_time = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H:%M:%S")
-        fh = logging.FileHandler(f"./logs/{args.model_name}/{args.dataset_name}/{args.save_model_name}/{str(log_start_time)}.log")
+        log_start_time = datetime.datetime.fromtimestamp(
+            time.time()).strftime("%Y-%m-%d_%H:%M:%S")
+        fh = logging.FileHandler(
+            f"./logs/{args.model_name}/{args.dataset_name}/{args.save_model_name}/{str(log_start_time)}.log")
         fh.setLevel(logging.DEBUG)
         # create console handler with a higher log level
         ch = logging.StreamHandler()
         ch.setLevel(logging.WARNING)
         # create formatter and add it to the handlers
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
         # add the handlers to logger
@@ -109,19 +107,20 @@ def main():
 
         # create model
         if args.model_name == 'TGAT':
-            dynamic_backbone = TGAT(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, 
-                                    neighbor_sampler=train_neighbor_sampler, time_feat_dim=args.time_feat_dim, 
+            dynamic_backbone = TGAT(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features,
+                                    neighbor_sampler=train_neighbor_sampler, time_feat_dim=args.time_feat_dim,
                                     num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout, device=args.device)
         elif args.model_name in ['JODIE', 'DyRep', 'TGN']:
             # four floats that represent the mean and standard deviation of source and destination node time shifts in the training data, which is used for JODIE
             src_node_mean_time_shift, src_node_std_time_shift, dst_node_mean_time_shift_dst, dst_node_std_time_shift = \
-                compute_src_dst_node_time_shifts(train_data.src_node_ids, train_data.dst_node_ids, train_data.node_interact_times)
-            dynamic_backbone = MemoryModel(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, 
-                                           neighbor_sampler=train_neighbor_sampler, time_feat_dim=args.time_feat_dim, 
+                compute_src_dst_node_time_shifts(
+                    train_data.src_node_ids, train_data.dst_node_ids, train_data.node_interact_times)
+            dynamic_backbone = MemoryModel(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features,
+                                           neighbor_sampler=train_neighbor_sampler, time_feat_dim=args.time_feat_dim,
                                            model_name=args.model_name, num_layers=args.num_layers, num_heads=args.num_heads,
-                                           dropout=args.dropout, src_node_mean_time_shift=src_node_mean_time_shift, 
+                                           dropout=args.dropout, src_node_mean_time_shift=src_node_mean_time_shift,
                                            src_node_std_time_shift=src_node_std_time_shift,
-                                           dst_node_mean_time_shift_dst=dst_node_mean_time_shift_dst, 
+                                           dst_node_mean_time_shift_dst=dst_node_mean_time_shift_dst,
                                            dst_node_std_time_shift=dst_node_std_time_shift, device=args.device)
         elif args.model_name == 'CAWN':
             dynamic_backbone = CAWN(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
@@ -149,8 +148,8 @@ def main():
                     f'{get_parameter_sizes(model) * 4 / 1024} KB, {get_parameter_sizes(model) * 4 / 1024 / 1024} MB.')
 
         # define optimizer
-        optimizer = create_optimizer(model=model, optimizer_name=args.optimizer, 
-                                    learning_rate=args.learning_rate, weight_decay=args.weight_decay)
+        optimizer = create_optimizer(model=model, optimizer_name=args.optimizer,
+                                     learning_rate=args.learning_rate, weight_decay=args.weight_decay)
 
         model = convert_to_gpu(model, device=args.device)
 
@@ -161,17 +160,20 @@ def main():
         early_stopping = EarlyStopping(patience=args.patience, save_model_folder=save_model_folder,
                                        save_model_name=args.save_model_name, logger=logger, model_name=args.model_name)
 
-        # loss_func = nn.BCELoss()
-        loss_func = nn.BCEWithLogitsLoss()
+        loss_func = nn.BCELoss()  # sigmoid should be applied explicitly
+        # since the link_predictor does not have a `sigmoid`
+        # loss_func = nn.BCEWithLogitsLoss()
+
+        val_perf_list = []
+        train_time_list, val_time_list, epoch_time_list = [], [], []
 
         # ================================================
         # ============== train & validation ==============
         # ================================================
-        val_trans_perf_list, val_induc_perf_list = [], []
-        train_times_l, val_times_l = [], []
-        free_mem_l, total_mem_l, used_mem_l = [], [], []
+        val_perf_list = []
         for epoch in range(args.num_epochs):
             start_epoch = timeit.default_timer()
+            start_train = timeit.default_timer()
             model.train()
             if args.model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
                 # training, only use training graph
@@ -188,7 +190,8 @@ def main():
                     train_data.src_node_ids[train_data_indices], train_data.dst_node_ids[train_data_indices], \
                     train_data.node_interact_times[train_data_indices], train_data.edge_ids[train_data_indices]
 
-                _, batch_neg_dst_node_ids = train_neg_edge_sampler.sample(size=len(batch_src_node_ids))
+                _, batch_neg_dst_node_ids = train_neg_edge_sampler.sample(
+                    size=len(batch_src_node_ids))
                 batch_neg_src_node_ids = batch_src_node_ids
 
                 # we need to compute for positive and negative edges respectively, because the new sampling strategy (for evaluation) allows the negative source nodes to be
@@ -264,73 +267,63 @@ def main():
                                                                           dst_node_ids=batch_neg_dst_node_ids,
                                                                           node_interact_times=batch_node_interact_times)
                 else:
-                    raise ValueError(f"Wrong value for model_name {args.model_name}!")
+                    raise ValueError(
+                        f"Wrong value for model_name {args.model_name}!")
                 # get positive and negative probabilities, shape (batch_size, )
-                positive_probabilities = model[1](input_1=batch_src_node_embeddings, 
+                positive_probabilities = model[1](input_1=batch_src_node_embeddings,
                                                   input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
-                negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, 
+                negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings,
                                                   input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
-                predicts = torch.cat([positive_probabilities, negative_probabilities], dim=0)
-                labels = torch.cat([torch.ones_like(positive_probabilities), torch.zeros_like(negative_probabilities)], dim=0)
+                predicts = torch.cat(
+                    [positive_probabilities, negative_probabilities], dim=0)
+                labels = torch.cat([torch.ones_like(
+                    positive_probabilities), torch.zeros_like(negative_probabilities)], dim=0)
 
                 loss = loss_func(input=predicts, target=labels)
 
                 train_losses.append(loss.item())
 
-                train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
+                train_metrics.append(get_link_prediction_metrics(
+                    predicts=predicts, labels=labels))
 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                train_idx_data_loader_tqdm.set_description(f'Epoch: {epoch + 1}, train for the {batch_idx + 1}-th batch, train loss: {loss.item()}')
+                train_idx_data_loader_tqdm.set_description(
+                    f'Epoch: {epoch + 1}, train for the {batch_idx + 1}-th batch, train loss: {loss.item()}')
 
                 if args.model_name in ['JODIE', 'DyRep', 'TGN']:
                     # detach the memories and raw messages of nodes in the memory bank after each batch, so we don't back propagate to the start of time
                     model[0].memory_bank.detach_memory_bank()
-                    
-            train_end = timeit.default_timer()
-            train_times_l.append(train_end - start_epoch)
-            
-            # memory usage tracking
-            free_mem, used_mem, total_mem = 0, 0, 0
-            if torch.cuda.is_available():
-                print("DEBUG: device: {}".format(torch.cuda.get_device_name(0)))
-                free_mem, total_mem = torch.cuda.mem_get_info()
-                used_mem = total_mem - free_mem
-                print("------------Epoch {}: GPU memory usage-----------".format(epoch))
-                print("Free memory: {}".format(free_mem))
-                print("Total available memory: {}".format(total_mem))
-                print("Used memory: {}".format(used_mem))
-                print("--------------------------------------------")
-                
-            free_mem_l.append(float((free_mem*1.0)/2**30))  # in GB
-            used_mem_l.append(float((used_mem*1.0)/2**30))  # in GB
-            total_mem_l.append(float((total_mem*1.0)/2**30))  # in GB
-        
+
+            end_train = timeit.default_timer()
+            train_time_list.append(end_train - start_train)
+
+            # ==============================================
             # === validation
             # after one complete epoch, evaluate the model on the validation set
-            val_start = timeit.default_timer()
-            val_trans_metric, val_induc_metric = eval_LPP_TGB_TvsI(model_name=args.model_name, model=model, 
-                                                              neighbor_sampler=full_neighbor_sampler, 
-                                                              evaluate_idx_data_loader=val_idx_data_loader, evaluate_data=val_data,  
-                                                              negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
-                                                              split_mode='val', k_value=10, nodebank=nodebank, 
-                                                              num_neighbors=args.num_neighbors, time_gap=args.time_gap)
-            val_trans_perf_list.append(val_trans_metric)
-            val_induc_perf_list.append(val_induc_metric)
-            val_times_l.append(timeit.default_timer() - val_start)
-            
+            start_val = timeit.default_timer()
+            val_metric = eval_LPP_TGB(model_name=args.model_name, model=model, neighbor_sampler=full_neighbor_sampler,
+                                      evaluate_idx_data_loader=val_idx_data_loader, evaluate_data=val_data,
+                                      negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
+                                      split_mode='val', num_neighbors=args.num_neighbors, time_gap=args.time_gap)
+            val_perf_list.append(val_metric)
+            end_val = timeit.default_timer()
+            val_time_list.append(end_val - start_val)
+
             epoch_time = timeit.default_timer() - start_epoch
-            logger.info(f'Epoch: {epoch + 1}, learning rate: {optimizer.param_groups[0]["lr"]}, train loss: {np.mean(train_losses):.4f}, total train & val elapsed time (s): {epoch_time:.4f}')
+            epoch_time_list.append(epoch_time)
+            logger.info(
+                f'Epoch: {epoch + 1}, learning rate: {optimizer.param_groups[0]["lr"]}, train loss: {np.mean(train_losses):.4f}, elapsed time (s): {epoch_time:.4f}')
             for metric_name in train_metrics[0].keys():
-                logger.info(f'train {metric_name}, {np.mean([train_metric[metric_name] for train_metric in train_metrics]):.4f}')
-            logger.info(f'Validation: {metric} transductive: {val_trans_metric: .4f}')
-            logger.info(f'Validation: {metric} inductive: {val_induc_metric: .4f}')
+                logger.info(
+                    f'train {metric_name}, {np.mean([train_metric[metric_name] for train_metric in train_metrics]):.4f}')
+            logger.info(f'Validation: {metric}: {val_metric: .4f}')
 
             # select the best model based on all the validate metrics
-            val_metric_indicator = [(metric, val_trans_metric, True)]
+            val_metric_indicator = [(metric, val_metric, True)]
             early_stop = early_stopping.step(val_metric_indicator, model)
 
             if early_stop:
@@ -340,24 +333,20 @@ def main():
         early_stopping.load_checkpoint(model)
 
         total_train_val_time = timeit.default_timer() - start_run
-        logger.info(f'Training and Validation is done: Total train & validation elapsed time (s): {total_train_val_time:.6f}')
-        
+        logger.info(
+            f'Total train & validation elapsed time (s): {total_train_val_time:.6f}')
+
         # ========================================
         # ============== Final Test ==============
         # ========================================
         start_test = timeit.default_timer()
-        # loading the test negative samples
-        dataset.load_test_ns()
-        test_trans_metric, test_induc_metric = eval_LPP_TGB_TvsI(model_name=args.model_name, model=model, 
-                                                                 neighbor_sampler=full_neighbor_sampler, 
-                                                                 evaluate_idx_data_loader=test_idx_data_loader, evaluate_data=test_data,  
-                                                                 negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
-                                                                 split_mode='test', k_value=10, nodebank=nodebank,
-                                                                 num_neighbors=args.num_neighbors, time_gap=args.time_gap)
+        test_metric = eval_LPP_TGB(model_name=args.model_name, model=model, neighbor_sampler=full_neighbor_sampler,
+                                   evaluate_idx_data_loader=test_idx_data_loader, evaluate_data=test_data,
+                                   negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
+                                   split_mode='test', num_neighbors=args.num_neighbors, time_gap=args.time_gap)
         test_time = timeit.default_timer() - start_test
         logger.info(f'Test elapsed time (s): {test_time:.4f}')
-        logger.info(f'Test: {metric} transductive: {test_trans_metric: .4f}')
-        logger.info(f'Test: {metric} inductive: {test_induc_metric: .4f}')
+        logger.info(f'Test: {metric}: {test_metric: .4f}')
 
         # avoid the overlap of logs
         if run < args.num_runs - 1:
@@ -365,33 +354,38 @@ def main():
             logger.removeHandler(ch)
 
         # save model result
-        result_json = {'data': args.model_name,
-                        'model': args.dataset_name,
-                        'run': run,
-                        'seed': args.seed,
-                        'train_times': train_times_l,
-                        'free_mem': free_mem_l,
-                        'total_mem': total_mem_l,
-                        'used_mem': used_mem_l,
-                        'max_used_mem': max(used_mem_l),
-                        'val_times': val_times_l,
-                        f'val {metric} transductive': val_trans_perf_list,
-                        f'val {metric} inductive': val_induc_perf_list,
-                        f'test {metric} transductive': test_trans_metric,
-                        f'test {metric} inductive': test_induc_metric,
-                        'test_time': test_time,
-                        'train_val_total_time': np.sum(np.array(train_times_l)) + np.sum(np.array(val_times_l)),
-                  }
+        result_json = {
+            "data": args.dataset_name,
+            "model": args.model_name,
+            "run": run,
+            "seed": args.seed,
+            "LR": args.learning_rage,
+            "train_time_list": train_time_list,
+            "val_time_list": val_time_list,
+            "epoch_time_list": epoch_time_list,
+            f"validation {metric}": val_perf_list,
+            "avg_train_time": np.mean(train_time_list),
+            "avg_val_time": np.mean(val_time_list),
+            "avg_epoch_time": np.mean(epoch_time_list),
+            "total_train_val_time": total_train_val_time,
+            "test_time": test_time,
+            "num_epoch": len(val_perf_list),
+            f"best validation {metric}": np.max(val_perf_list),
+            f"test {metric}": test_metric,
+        }
+
         result_json = json.dumps(result_json, indent=4)
 
-        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
+        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}_CT_original"
         os.makedirs(save_result_folder, exist_ok=True)
-        save_result_path = os.path.join(save_result_folder, f"{args.save_model_name}.json")
+        save_result_path = os.path.join(
+            save_result_folder, f"{args.save_model_name}_CT_original.json")
 
         with open(save_result_path, 'w') as file:
             file.write(result_json)
 
-        logger.info(f"run {run} total elapsed time (s): {timeit.default_timer() - start_run:.4f}")
+        logger.info(
+            f"run {run} total elapsed time (s): {timeit.default_timer() - start_run:.4f}")
 
 
 if __name__ == "__main__":

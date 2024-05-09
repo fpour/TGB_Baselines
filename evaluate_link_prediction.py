@@ -15,7 +15,7 @@ from models.GraphMixer import GraphMixer
 from models.DyGFormer import DyGFormer
 from models.modules import MergeLayer
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes
-from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
+from utils.utils import get_neighbor_sampler, NegativeEdgeSampler_local
 from evaluate_models_utils import evaluate_model_link_prediction, evaluate_edge_bank_link_prediction
 from utils.DataLoader import get_idx_data_loader, get_link_prediction_data
 from utils.EarlyStopping import EarlyStopping
@@ -39,23 +39,23 @@ if __name__ == "__main__":
     # initialize negative samplers, set seeds for validation and testing so negatives are the same across different runs
     # in the inductive setting, negatives are sampled only amongst other new nodes
     if args.negative_sample_strategy != 'random':
-        val_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids,
+        val_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids,
                                                    interact_times=full_data.node_interact_times, last_observed_time=train_data.node_interact_times[-1],
                                                    negative_sample_strategy=args.negative_sample_strategy, seed=0)
-        new_node_val_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=new_node_val_data.src_node_ids, dst_node_ids=new_node_val_data.dst_node_ids,
+        new_node_val_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=new_node_val_data.src_node_ids, dst_node_ids=new_node_val_data.dst_node_ids,
                                                             interact_times=new_node_val_data.node_interact_times, last_observed_time=train_data.node_interact_times[-1],
                                                             negative_sample_strategy=args.negative_sample_strategy, seed=1)
-        test_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids,
+        test_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids,
                                                     interact_times=full_data.node_interact_times, last_observed_time=val_data.node_interact_times[-1],
                                                     negative_sample_strategy=args.negative_sample_strategy, seed=2)
-        new_node_test_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=new_node_test_data.src_node_ids, dst_node_ids=new_node_test_data.dst_node_ids,
+        new_node_test_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=new_node_test_data.src_node_ids, dst_node_ids=new_node_test_data.dst_node_ids,
                                                              interact_times=new_node_test_data.node_interact_times, last_observed_time=val_data.node_interact_times[-1],
                                                              negative_sample_strategy=args.negative_sample_strategy, seed=3)
     else:
-        val_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids, seed=0)
-        new_node_val_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=new_node_val_data.src_node_ids, dst_node_ids=new_node_val_data.dst_node_ids, seed=1)
-        test_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids, seed=2)
-        new_node_test_neg_edge_sampler = NegativeEdgeSampler(src_node_ids=new_node_test_data.src_node_ids, dst_node_ids=new_node_test_data.dst_node_ids, seed=3)
+        val_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids, seed=0)
+        new_node_val_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=new_node_val_data.src_node_ids, dst_node_ids=new_node_val_data.dst_node_ids, seed=1)
+        test_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=full_data.src_node_ids, dst_node_ids=full_data.dst_node_ids, seed=2)
+        new_node_test_neg_edge_sampler = NegativeEdgeSampler_local(src_node_ids=new_node_test_data.src_node_ids, dst_node_ids=new_node_test_data.dst_node_ids, seed=3)
 
     # get data loaders
     val_idx_data_loader = get_idx_data_loader(indices_list=list(range(len(val_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)

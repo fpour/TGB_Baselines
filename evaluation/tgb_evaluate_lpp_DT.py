@@ -3,24 +3,13 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
-import logging
-import time
-import argparse
-import os
-import json
+import math
 
-from models.EdgeBank import edge_bank_link_prediction
-from utils.metrics import get_link_prediction_metrics, get_node_classification_metrics
-from utils.utils import set_random_seed
 from utils.utils import NeighborSampler
-from utils.DataLoader import Data
-
-# additional required imports
-from tgb.linkproppred.evaluate import Evaluator
 
 
 def query_pred_edge_batch(model_name: str, model: nn.Module,
-                          src_node_ids: int, dst_node_ids: int, node_interact_times: float, edge_ids: int,
+                          src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray, edge_ids: np.ndarray,
                           edges_are_positive: bool, num_neighbors: int, time_gap: int):
     """
     query the prediction probabilities for a batch of edges
@@ -70,26 +59,15 @@ def query_pred_edge_batch(model_name: str, model: nn.Module,
     return batch_src_node_embeddings, batch_dst_node_embeddings
 
 
-def eval_LPP_TGB(model_name: str, model: nn.Module, neighbor_sampler: NeighborSampler, evaluate_idx_data_loader: DataLoader,
-                 evaluate_data: Data,  negative_sampler: object, evaluator: Evaluator, metric: str = 'mrr',
-                 split_mode: str = 'test', num_neighbors: int = 20, time_gap: int = 2000):
+def eval_LPP_DT(model_name: str, model: nn.Module, device, neighbor_sampler: NeighborSampler,
+                negative_sampler, temporal_data, snapshot_indices, start_times, end_times,
+                evaluator, metric: str = "mrr", split_mode: str = "test",
+                num_neighbors: int = 20, time_gap: int = 2000):
     """
-    evaluate models on the link prediction task based on TGB NegativeSampler and Evaluator
-    :param model_name: str, name of the model
-    :param model: nn.Module, the model to be evaluated
-    :param neighbor_sampler: NeighborSampler, neighbor sampler
-    :param evaluate_idx_data_loader: DataLoader, evaluate index data loader
-    :param evaluate_neg_edge_sampler: NegativeEdgeSampler, evaluate negative edge sampler
-    :param evaluate_data: Data, data to be evaluated
-    :param loss_func: nn.Module, loss function
-    :param num_neighbors: int, number of neighbors to sample for each node
-    :param time_gap: int, time gap for neighbors to compute node features
-    :param split_mode: str, specifies whether the evaluation is performed for test or validation
-    :param evaluator: Evaluator, dynamic link prediction evaluator
-    "param k_value: int, the desired `k` for calculation of metrics @ k
-    :return:
+    evaluate models on the link prediction task for Discrete Time Dynamic Graphs
     """
-    perf_list = []
+    eval_snapshot_indices = range(
+        start_times[split_mode], end_times[split_mode] + 1)
 
     if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
         # evaluation phase use all the graph information
@@ -98,28 +76,36 @@ def eval_LPP_TGB(model_name: str, model: nn.Module, neighbor_sampler: NeighborSa
     model.eval()
 
     with torch.no_grad():
-        # store evaluate losses and metrics
-        evaluate_idx_data_loader_tqdm = tqdm(
-            evaluate_idx_data_loader, ncols=120)
-        for batch_idx, evaluate_data_indices in enumerate(evaluate_idx_data_loader_tqdm):
-            batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = \
-                evaluate_data.src_node_ids[evaluate_data_indices],  evaluate_data.dst_node_ids[evaluate_data_indices], \
-                evaluate_data.node_interact_times[evaluate_data_indices], evaluate_data.edge_ids[evaluate_data_indices]
+        # store evaluate metrics
+        evaluate_metrics = []
+        evaluate_snapshot_idx_tqdm = tqdm(eval_snapshot_indices, ncols=120)
+        for snap_idx in evaluate_snapshot_idx_tqdm:
+            idx_start = snapshot_indices[snap_idx][0]
+            idx_end = snapshot_indices[snap_idx][1]
 
-            pos_src_orig = batch_src_node_ids - 1
-            pos_dst_orig = batch_dst_node_ids - 1
-            pos_t = np.array([int(ts) for ts in batch_node_interact_times])
-            neg_batch_list = negative_sampler.query_batch(pos_src_orig, pos_dst_orig,
-                                                          pos_t, split_mode=split_mode)
+            # temporal_data is Tensor, the model works best with np.ndarray
+            src_node_ids = temporal_data.sources[idx_start:idx_end].clone(
+            ).numpy().astype(np.longlong)
+            dst_node_ids = temporal_data.destinations[idx_start:idx_end].clone(
+            ).numpy().astype(np.longlong)
+            node_interact_times = temporal_data.timestamps[idx_start:idx_end].clone(
+            ).numpy().astype(np.float64)
+            edge_ids = temporal_data.edge_ids[idx_start:idx_end].clone(
+            ).numpy().astype(np.longlong)
 
+            neg_batch_list = negative_sampler.query_batch(src_node_ids, dst_node_ids, node_interact_times,
+                                                          split_mode=split_mode)
+            num_negative_samples_per_node = [
+                len(per_neg_batch) for per_neg_batch in neg_batch_list]
+
+            pos_prob_list, neg_prob_list = [], []
             for idx, neg_batch in enumerate(neg_batch_list):
-                # due to the special data loading processing ...
-                neg_batch = np.array(neg_batch) + 1
-                batch_neg_src_node_ids = np.array(
-                    [int(batch_src_node_ids[idx]) for _ in range(len(neg_batch))])
-                batch_neg_dst_node_ids = np.array(neg_batch)
-                batch_neg_node_interact_times = np.array(
-                    [batch_node_interact_times[idx] for _ in range(len(neg_batch))])
+                batch_neg_src_node_ids = torch.full(
+                    (len(neg_batch),), src_node_ids[idx], device=device).cpu().numpy()
+                batch_neg_dst_node_ids = torch.from_numpy(np.array(neg_batch)).to(
+                    dtype=torch.long, device=device).cpu().numpy()
+                batch_neg_node_interact_times = torch.full(
+                    (len(neg_batch),), node_interact_times[idx], device=device).cpu().numpy()
 
                 # negative edges
                 batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
@@ -131,8 +117,8 @@ def eval_LPP_TGB(model_name: str, model: nn.Module, neighbor_sampler: NeighborSa
                 # one positive edge
                 batch_pos_src_node_embeddings, batch_pos_dst_node_embeddings = \
                     query_pred_edge_batch(model_name=model_name, model=model,
-                                          src_node_ids=np.array([batch_src_node_ids[idx]]), dst_node_ids=np.array([batch_dst_node_ids[idx]]),
-                                          node_interact_times=np.array([batch_node_interact_times[idx]]), edge_ids=np.array([batch_edge_ids[idx]]),
+                                          src_node_ids=np.array([src_node_ids[idx]]), dst_node_ids=np.array([dst_node_ids[idx]]),
+                                          node_interact_times=np.array([node_interact_times[idx]]), edge_ids=np.array([edge_ids[idx]]),
                                           edges_are_positive=True, num_neighbors=num_neighbors, time_gap=time_gap)
 
                 # get positive and negative probabilities
@@ -141,14 +127,27 @@ def eval_LPP_TGB(model_name: str, model: nn.Module, neighbor_sampler: NeighborSa
                 negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings,
                                                   input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
-                # compute MRR
-                input_dict = {
-                    'y_pred_pos': np.array(positive_probabilities.cpu()),
-                    'y_pred_neg': np.array(negative_probabilities.cpu()),
-                    'eval_metric': [metric]
-                }
-                perf_list.append(evaluator.eval(input_dict)[metric])
+                pos_prob_list.append(positive_probabilities.cpu().numpy())
+                neg_prob_list.append(negative_probabilities.cpu().numpy())
 
-    avg_perf_metric = float(np.mean(np.array(perf_list)))
+            positive_probabilities = np.array([
+                item for sublist in pos_prob_list for item in sublist])
+            negative_probabilities = np.array([
+                item for sublist in neg_prob_list for item in sublist])
+            for sample_idx in range(len(src_node_ids)):
+                neg_start_idx = sum(
+                    num_negative_samples_per_node[:sample_idx]) - 1
+                neg_end_idx = neg_start_idx + \
+                    num_negative_samples_per_node[sample_idx]  # inclusive
+                # compute metric
+                input_dict = {
+                    # use slices instead of index to keep the dimension of y_pred_pos
+                    "y_pred_pos": positive_probabilities[sample_idx: sample_idx + 1],
+                    "y_pred_neg": negative_probabilities[neg_start_idx: neg_end_idx],
+                    "eval_metric": [metric],
+                }
+                evaluate_metrics.append(evaluator.eval(input_dict)[metric])
+
+    avg_perf_metric = float(np.mean(np.array(evaluate_metrics)))
 
     return avg_perf_metric
