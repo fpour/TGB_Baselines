@@ -27,14 +27,15 @@ from models.DyGFormer import DyGFormer
 from models.modules import MergeLayer
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes, create_optimizer
 from utils.utils import get_neighbor_sampler, NegativeEdgeSampler_local
-from evaluate_models_utils import evaluate_model_link_prediction
 from utils.metrics import get_link_prediction_metrics
-from utils.DataLoader import get_idx_data_loader, get_link_prediction_tgb_data, get_link_pred_data_TRANS_TGB
+from utils.DataLoader_original import get_idx_data_loader, get_link_prediction_tgb_data
 from utils.EarlyStopping import EarlyStopping
 from utils.load_configs import get_link_prediction_args
 
 from tgb.linkproppred.evaluate import Evaluator
 from evaluation.tgb_evaluate_LPP import eval_LPP_TGB
+
+K_VALUE = 10
 
 
 def main():
@@ -43,8 +44,9 @@ def main():
     args = get_link_prediction_args(is_evaluation=False)
 
     # get data for training, validation and testing
-    node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, dataset = \
-        get_link_prediction_tgb_data(dataset_name=args.dataset_name)
+    node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, \
+        negative_sampler, metric = get_link_prediction_tgb_data(
+            dataset_name=args.dataset_name)
 
     # initialize training neighbor sampler to retrieve temporal graph
     train_neighbor_sampler = get_neighbor_sampler(data=train_data, sample_neighbor_strategy=args.sample_neighbor_strategy,
@@ -66,15 +68,8 @@ def main():
     test_idx_data_loader = get_idx_data_loader(indices_list=list(
         range(len(test_data.src_node_ids))), batch_size=args.batch_size, shuffle=False)
 
-    val_metric_all_runs, test_metric_all_runs = [], []
-
     # Evaluatign with an evaluator of TGB
-    metric = dataset.eval_metric
     evaluator = Evaluator(name=args.dataset_name)
-    negative_sampler = dataset.negative_sampler
-
-    # load the validation negative samples
-    dataset.load_val_ns()
 
     for run in range(args.num_runs):
         start_run = timeit.default_timer()
@@ -165,8 +160,12 @@ def main():
         early_stopping = EarlyStopping(patience=args.patience, save_model_folder=save_model_folder,
                                        save_model_name=args.save_model_name, logger=logger, model_name=args.model_name)
 
-        # loss_func = nn.BCELoss()
-        loss_func = nn.BCEWithLogitsLoss()
+        loss_func = nn.BCELoss()  # sigmoid should be applied explicitly
+        # since the link_predictor does not have a `sigmoid`
+        # loss_func = nn.BCEWithLogitsLoss()
+
+        val_perf_list = []
+        train_time_list, val_time_list, epoch_time_list = [], [], []
 
         # ================================================
         # ============== train & validation ==============
@@ -174,6 +173,7 @@ def main():
         val_perf_list = []
         for epoch in range(args.num_epochs):
             start_epoch = timeit.default_timer()
+            start_train = timeit.default_timer()
             model.train()
             if args.model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
                 # training, only use training graph
@@ -298,15 +298,23 @@ def main():
                     # detach the memories and raw messages of nodes in the memory bank after each batch, so we don't back propagate to the start of time
                     model[0].memory_bank.detach_memory_bank()
 
+            end_train = timeit.default_timer()
+            train_time_list.append(end_train - start_train)
+
+            # ==============================================
             # === validation
             # after one complete epoch, evaluate the model on the validation set
+            start_val = timeit.default_timer()
             val_metric = eval_LPP_TGB(model_name=args.model_name, model=model, neighbor_sampler=full_neighbor_sampler,
                                       evaluate_idx_data_loader=val_idx_data_loader, evaluate_data=val_data,
                                       negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
-                                      split_mode='val', k_value=10, num_neighbors=args.num_neighbors, time_gap=args.time_gap)
+                                      split_mode='val', num_neighbors=args.num_neighbors, time_gap=args.time_gap)
             val_perf_list.append(val_metric)
+            end_val = timeit.default_timer()
+            val_time_list.append(end_val - start_val)
 
             epoch_time = timeit.default_timer() - start_epoch
+            epoch_time_list.append(epoch_time)
             logger.info(
                 f'Epoch: {epoch + 1}, learning rate: {optimizer.param_groups[0]["lr"]}, train loss: {np.mean(train_losses):.4f}, elapsed time (s): {epoch_time:.4f}')
             for metric_name in train_metrics[0].keys():
@@ -332,12 +340,10 @@ def main():
         # ============== Final Test ==============
         # ========================================
         start_test = timeit.default_timer()
-        # loading the test negative samples
-        dataset.load_test_ns()
         test_metric = eval_LPP_TGB(model_name=args.model_name, model=model, neighbor_sampler=full_neighbor_sampler,
                                    evaluate_idx_data_loader=test_idx_data_loader, evaluate_data=test_data,
                                    negative_sampler=negative_sampler, evaluator=evaluator, metric=metric,
-                                   split_mode='test', k_value=10, num_neighbors=args.num_neighbors, time_gap=args.time_gap)
+                                   split_mode='test', num_neighbors=args.num_neighbors, time_gap=args.time_gap)
         test_time = timeit.default_timer() - start_test
         logger.info(f'Test elapsed time (s): {test_time:.4f}')
         logger.info(f'Test: {metric}: {test_metric: .4f}')
@@ -353,17 +359,27 @@ def main():
             "model": args.model_name,
             "run": run,
             "seed": args.seed,
+            "LR": args.learning_rage,
+            "train_time_list": train_time_list,
+            "val_time_list": val_time_list,
+            "epoch_time_list": epoch_time_list,
             f"validation {metric}": val_perf_list,
-            f"test {metric}": test_metric,
-            "test_time": test_time,
+            "avg_train_time": np.mean(train_time_list),
+            "avg_val_time": np.mean(val_time_list),
+            "avg_epoch_time": np.mean(epoch_time_list),
             "total_train_val_time": total_train_val_time,
+            "test_time": test_time,
+            "num_epoch": len(val_perf_list),
+            f"best validation {metric}": np.max(val_perf_list),
+            f"test {metric}": test_metric,
         }
+
         result_json = json.dumps(result_json, indent=4)
 
-        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
+        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}_CT_original"
         os.makedirs(save_result_folder, exist_ok=True)
         save_result_path = os.path.join(
-            save_result_folder, f"{args.save_model_name}.json")
+            save_result_folder, f"{args.save_model_name}_CT_original.json")
 
         with open(save_result_path, 'w') as file:
             file.write(result_json)
