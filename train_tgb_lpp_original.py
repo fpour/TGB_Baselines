@@ -320,7 +320,8 @@ def main():
             for metric_name in train_metrics[0].keys():
                 logger.info(
                     f'train {metric_name}, {np.mean([train_metric[metric_name] for train_metric in train_metrics]):.4f}')
-            logger.info(f'Validation: {metric}: {val_metric: .4f}')
+            logger.info(
+                f'Validation: {metric}: {val_metric: .4f}, elapsed time (s): {end_val - start_val}')
 
             # select the best model based on all the validate metrics
             val_metric_indicator = [(metric, val_metric, True)]
@@ -359,7 +360,7 @@ def main():
             "model": args.model_name,
             "run": run,
             "seed": args.seed,
-            "LR": args.learning_rage,
+            "LR": args.learning_rate,
             "train_time_list": train_time_list,
             "val_time_list": val_time_list,
             "epoch_time_list": epoch_time_list,
